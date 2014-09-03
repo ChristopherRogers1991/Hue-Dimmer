@@ -1,0 +1,4 @@
+  File "hueDimmer.py", line 111
+    elif hour >= 12 and <= 5:
+                         ^
+SyntaxError: invalid syntax
