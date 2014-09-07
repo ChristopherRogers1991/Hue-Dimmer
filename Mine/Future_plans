@@ -1,0 +1,43 @@
+FUTURE PLANS
+
+This program, as it stands now, is functional, however, it
+was not very well thought out ahead, thus is failry hacked
+together, and is not easily extended/improved. To make it what
+it should be, a pretty big overhaul/rewrite is needed. The
+outline for the design I have in mind now is this:
+
+3 main threads:
+    main, consolidated_events, raw_events
+
+main will spin off the other two
+
+Once running, raw_events will read all incoming events
+from the devince. It will continuously enter these events into
+a queue, along with a time stamp from when they happened.
+
+Consoldated_events will read from the que raw_events is
+writing to. Using the raw events + time stamps, it will
+write to a que of consolodated events. For example, two raw
+button presses in a short time span could result in 
+a single double-click event being written to the cosolodated
+events que. This thread may need to spin off its own sub threads
+to handle things such as long presses. The goal of this thread
+is to filter noise and allow for more/advanced types of events
+beyond the basic right, left, down, up events we can get via
+raw.
+
+Main will read from the consoldated events que and handle all
+actual Hue interactions and, as would be expected, basic
+program logic (e.g. basic set up,  mode tracking/advancement,
+etc.).
+
+
+The plan is to also at some point get an auto-setup program
+which will generate a configuration file to be used by the main
+hueDimmer program. Most, if not all constants etc. should be
+defined in that file so that users can set them to whatever
+they'd like.
+
+The auto setup will depend on nmap. If nmap is not installed,
+the user will be asked to enter details about their Hue hub
+manually, and then auto setup will continue.
