@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 # requires python-evdev, python-requests
+import threading
 from evdev import InputDevice, categorize, ecodes, DeviceInfo, UInput, InputEvent, events
 from select import select
 import os, requests, json, time
@@ -60,6 +61,49 @@ def flash_led(uinput, num_flashes, brightness, duration):
         uinput.write(ecodes.EV_MSC, ecodes.MSC_PULSELED, 0)
         uinput.syn()
         time.sleep(.2)
+        
+
+was_long = False
+button_up = True # This is used to track the state of the button between threads
+
+# These constants define what can be returned by button_down
+# (should be enums - python 2 enums?)
+
+SHORT_PRESS = 0
+LONG_PRESS = SHORT_PRESS + 1
+
+def button_down(uinput, time_pressed):
+    '''
+    This function is intended to be run on its own thread,
+    and is used to determine whether a button press was a normal/short
+    press, or a long press.
+
+    Once it registers a long press, it should flash the led on the device.
+
+    PARAM time_pressed = int representing when the button was pressed
+        Note that this is passed in rather than calculated here to
+        account for any overhead spinning off the new thread.
+
+    RETURN an int representing the type of press. These are defined as
+    follows:
+        SHORT_PRESS = 0
+        LONG_PRESS = SHORT_PRESS + 1
+    '''
+    global was_long
+    global button_up
+
+    last_checked_at = get_time_in_ms()
+
+    while not button_up:
+        if last_checked_at - time_pressed > long_press_time:
+            was_long = True
+            flash_led(uinput, 1, led_brightness, flash_duration)
+            return
+        time.sleep(.01)
+        last_checked_at = get_time_in_ms()
+    return
+
+
 
 def handle_turn(event):
     g = requests.get(url)
@@ -122,6 +166,8 @@ def toggle_all():
 
 
 def main():
+    global was_long
+    global button_up
     global time_down
 
     dev = None
@@ -154,11 +200,17 @@ def main():
             # if the button has been activated                
             elif event.code == button_pushed:
                 if event.value == positive: # button pressed
+                    button_up = False
                     time_down = get_time_in_ms()
+                    t = threading.Thread(target = button_down, args = (uinput, time_down))
+                    t.daemon = True
+                    t.start()
+
                 else: # button released
-                    if get_time_in_ms() - time_down > long_press_time: # long press
+                    button_up = True
+                    if was_long: # long press
                         advance_mode()
-                        flash_led(uinput, (mode + 1), led_brightness, flash_duration)
+                        was_long = False
                     else:
                         toggle_all()
 
