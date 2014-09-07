@@ -4,6 +4,8 @@ from select import select
 import os, requests, json, time
 
 
+DEV_DIR = '/dev/input/'
+
 button_up = True # This is used to track the state of the button between threads
 time_down = 0 # Time at which the button was last pushed down
 
@@ -32,7 +34,7 @@ was_long = False
 SHORT_PRESS = 0
 LONG_PRESS = SHORT_PRESS + 1
 
-def button_down(time_pressed, uinput):
+def button_down(uinput, time_pressed):
     '''
     This function is intended to be run on its own thread,
     and is used to determine whether a button press was a normal/short
@@ -49,16 +51,18 @@ def button_down(time_pressed, uinput):
         SHORT_PRESS = 0
         LONG_PRESS = SHORT_PRESS + 1
     '''
-global was_long
+    global was_long
+    global button_up
 
     last_checked_at = get_time_in_ms()
 
-    while !button_up:
-        if last_checked_at - time_pressed > LONG_PRESS_DELAY:
-            flash_led(uinput, 1, 255, 100)
+    while not button_up:
+        if last_checked_at - time_pressed > long_press_time:
             was_long = True
+            flash_led(uinput, 1, led_brightness, flash_duration)
             return
-        sleep(.01)
+        time.sleep(.01)
+        last_checked_at = get_time_in_ms()
     return
 
 
@@ -74,6 +78,8 @@ led_brightness = 100
 
 
 def main():
+    global was_long
+    global button_up
     dev = None
     for dev in os.listdir(DEV_DIR):
         if dev.find("event") == 0:
@@ -96,22 +102,24 @@ def main():
         for event in dev.read():
 
             # if the knob has been turned and our delay period has passed
-            if event.code == knob_turned #and get_time_in_ms() - delay > time_of_last_turn:
+            if event.code == knob_turned: #and get_time_in_ms() - delay > time_of_last_turn:
                 print event
 
             # if the button has been activated                
             elif event.code == button_pushed:
                 if event.value == positive: # button pressed
+                    button_up = False
                     time_down = get_time_in_ms()
-                    print event
                     t = threading.Thread(target = button_down, args = (uinput, time_down))
                     t.daemon = True
                     t.start()
+                    print event
                 else: # button released
+                    button_up = True
                     if was_long: # long press
-                        flash_led(uinput, 1, led_brightness, flash_duration)
                         was_long = False
                     else:
                         print event
 
-
+if __name__ == "__main__":
+    main()
