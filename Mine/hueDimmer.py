@@ -66,12 +66,6 @@ def flash_led(uinput, num_flashes, brightness, duration):
 was_long = False
 button_up = True # This is used to track the state of the button between threads
 
-# These constants define what can be returned by button_down
-# (should be enums - python 2 enums?)
-
-SHORT_PRESS = 0
-LONG_PRESS = SHORT_PRESS + 1
-
 def button_down(uinput, time_pressed):
     '''
     This function is intended to be run on its own thread,
@@ -84,11 +78,13 @@ def button_down(uinput, time_pressed):
         Note that this is passed in rather than calculated here to
         account for any overhead spinning off the new thread.
 
-    RETURN an int representing the type of press. These are defined as
-    follows:
-        SHORT_PRESS = 0
-        LONG_PRESS = SHORT_PRESS + 1
-    '''
+    PARAM uinput = the PowerMat device
+
+    Side Effects:
+        LED is flashed
+        was_long is set to True
+
+   '''
     global was_long
     global button_up
 
