@@ -159,9 +159,9 @@ def toggle_all():
                 ct = max_colortemp
                 bri = 50
             #print "bri = " + str(bri) + " ct = " + str(ct) + " hour = " + str(hour)
-            p = requests.put(url + "action", data=json.dumps({"on":True, "bri":bri, "ct":ct, "transitiontime":0}))
+            p = requests.put(url + "action", data=json.dumps({"on":True, "bri":bri, "ct":ct, "transitiontime":2}))
         else:
-            p = requests.put(url + "action", data=json.dumps({"on":False, "transitiontime":0}))
+            p = requests.put(url + "action", data=json.dumps({"on":False, "transitiontime":2}))
 
 
 
