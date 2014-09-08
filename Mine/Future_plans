@@ -41,3 +41,6 @@ they'd like.
 The auto setup will depend on nmap. If nmap is not installed,
 the user will be asked to enter details about their Hue hub
 manually, and then auto setup will continue.
+
+Example threading can be found at:
+http://stackoverflow.com/questions/2846653/python-multithreading-for-dummies
