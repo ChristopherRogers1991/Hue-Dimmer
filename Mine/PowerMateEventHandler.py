@@ -1,112 +1,168 @@
 # requires python-evdev, python-requests
-from evdev import InputDevice, categorize, ecodes
+from evdev import InputDevice, categorize, ecodes, DeviceInfo, UInput, InputEvent, events
 from select import select
-from evdev import DeviceInfo
-from evdev import UInput
-from evdev import InputEvent
-from evdev import events
+from enum import Enum
+import Queue
 
 
-delay = 100 # in milliseconds
-long_press_time = 500 # time (in ms) the button must be held to register a long press
-time_down = 0 # time at which the button was last pressed down
-led_brightness = 100
-flash_duration = .2
-
-max_devices = 16 # max number of input devices
-
-button_pushed = 256
-knob_turned = 7
-positive = 1 # button down, or knob clockwise
-negative = -1 # button up, or knob counter-clockwise
+class ConsolidatedEventCodes(Enum):
+    SINGLE_CLICK = 0
+    DOUBLE_CLICK = SINGLE_CLICK + 1
+    LONG_CLICK = DOUBLE_CLICK + 1
+    RIGHT_TURN = LONG_CLICK + 1
+    LEFT_TURN = RIGHT_TURN + 1
+    
 
 
-def get_time_in_ms():
-    return int(round(time.time() * 1000))
+class PowerMateEventHandler(object):
+
+    delay = 100 # in milliseconds
+    long_press_time = 500 # time (in ms) the button must be held to register a long press
+    time_down = 0 # time at which the button was last pressed down
+    led_brightness = 100
+    flash_duration = .2
+    
+    max_devices = 16 # max number of input devices
+    
+    button_pushed = 256
+    knob_turned = 7
+    positive = 1 # button down, or knob clockwise
+    negative = -1 # button up, or knob counter-clockwise
 
 
-def flash_led(uinput, num_flashes, brightness, duration):
-    for i in range(num_flashes):
-        uinput.write(ecodes.EV_MSC, ecodes.MSC_PULSELED, brightness)
-        uinput.syn()
-        time.sleep(duration)
+    def __init__(self):
+        self.__raw_queue = Queue.Queue()
+        self.__consolidated_queue = Queue.Queue()
+        self.__dev = __find_device()
+
+        self.__button_up = True
+        self.__was_long = False
+    
+    def get_time_in_ms(self):
+        return int(round(time.time() * 1000))
+    
+    
+    def flash_led(self, uinput, num_flashes, brightness, duration):
+        for i in range(num_flashes):
+            uinput.write(ecodes.EV_MSC, ecodes.MSC_PULSELED, brightness)
+            uinput.syn()
+            time.sleep(duration)
+            uinput.write(ecodes.EV_MSC, ecodes.MSC_PULSELED, 0)
+            uinput.syn()
+            time.sleep(.2)
+    
+    
+    def __find_device(self):
+        '''
+        Finds and returns the device in /dev/input/event
+    
+        RETURN dev = An evdev.InputDevice
+        '''
+        dev = None
+        for i in range(0, max_devices):
+            dev = InputDevice('/dev/input/event' + str(i))
+            if dev.name.find('Griffin PowerMate') >= 0:
+                break;
+        return dev
+    
+    
+    def turn_off_led(self):
+        '''
+        Turns off the led in the base.
+        '''
+        uinput = UInput(events={ecodes.EV_MSC:[ecodes.MSC_PULSELED]})
+        uinput.device = dev
+        uinput.fd = dev.fd
         uinput.write(ecodes.EV_MSC, ecodes.MSC_PULSELED, 0)
         uinput.syn()
-        time.sleep(.2)
-
-def handle_turn(event):
-    g = requests.get(url)
-    successful = False
-
-    if g.status_code == success:
-
-        p = None
-
-        if mode == MODE_BRIGHTNESS:
-            bri = json.loads(g.content)['action']['bri'] + (brightness_step * event.value) # event.value is always +1 or -1
-
-            if bri > max_brightness:
-                bri = max_brightness
-            elif bri < 0:
-                bri = 0
-
-            p = requests.put(url + "action", data=json.dumps({"bri": bri}))
-
-        elif mode == MODE_COLORTEMP:
-            ct = json.loads(g.content)['action']['ct'] + (colortemp_step * event.value) # event.value is always +1 or -1
-
-            if ct > max_colortemp:
-                ct = max_colortemp
-            elif ct < min_colortemp:
-                ct = min_colortemp 
-
-            p = requests.put(url + "action", data=json.dumps({"ct": ct}))
-        successful = (p.status_code == success)
-
-    return successful
+    
+    
+    
+    def __raw(self):
+    
+        while True:
+            r,w,x = select([self.dev], [], [])
+    
+            for event in self.dev.read():
+                self.__raw_queue.put(event)
 
 
+    def __button_down(self, time_pressed):
+        '''
+        This function is intended to be run on its own thread,
+        and is used to determine whether a button press was a normal/short
+        press, or a long press.
+    
+        Once it registers a long press, it should flash the led on the device.
+    
+        PARAM time_pressed = int representing when the button was pressed
+            Note that this is passed in rather than calculated here to
+            account for any overhead spinning off the new thread.
+    
+        PARAM uinput = the PowerMat device
+    
+        Side Effects:
+            LED is flashed
+            was_long is set to True
+    
+       '''
+    
+        last_checked_at = get_time_in_ms()
+    
+        while not button_up:
+            if last_checked_at - time_pressed > long_press_time:
+                self.was_long = True
+                flash_led(uinput, 1, led_brightness, flash_duration)
+                return
+            time.sleep(.01)
+            last_checked_at = get_time_in_ms()
+        return
 
 
-def main():
-    global time_down
+    
+    
+    def __consolidated(self):
+    
+        time_of_last_turn = 0
 
-    dev = None
-    for i in range(0, max_devices):
-        dev = InputDevice('/dev/input/event' + str(i))
-        if dev.name.find('Griffin PowerMate') >= 0:
-            break;
+        while True:
+            curr = self.__raw_queue.get()
 
-    print dev
-    uinput = UInput(events={ecodes.EV_MSC:[ecodes.MSC_PULSELED]})
-    uinput.device = dev
-    uinput.fd = dev.fd
-    uinput.write(ecodes.EV_MSC, ecodes.MSC_PULSELED, 0)
-    uinput.syn()
-
-    time_of_last_turn = int(round(time.time() * 1000)) # this is used to create a delay, so the lights aren't spammed with dim events
-
-    while True:
-        r,w,x = select([dev], [], [])
-
-        for event in dev.read():
-
-            # if the knob has been turned and our delay period has passed
             if event.code == knob_turned and get_time_in_ms() - delay > time_of_last_turn:
-                if handle_turn(event):
-                    time_of_last_turn = int(round(time.time() * 1000))
+                if event.value > 0:
+                    self.__consolidated_queue.put(RIGHT_TURN)
+                else:
+                    self.__consolidated_queue.put(LEFT_TURN)
+                time_of_last_turn = get_time_in_ms()
 
-            # if the button has been activated                
             elif event.code == button_pushed:
                 if event.value == positive: # button pressed
-		    time_down = get_time_in_ms()
+                    self.button_up = False
+                    time_down = get_time_in_ms()
+                    t = threading.Thread(target = button_down, args = (time_down))
+                    t.daemon = True
+                    t.start()
+
                 else: # button released
-	            if get_time_in_ms() - time_down > long_press_time: # long press
-		        advance_mode()
-                        flash_led(uinput, (mode + 1), led_brightness, flash_duration)
+                    button_up = True
+                    if was_long: # long press
+                        self.__consolidated_queue.put(LONG_CLICK)
+                        was_long = False
                     else:
-                        toggle_all()
+                        self.__consolidated_queue.put(SINGLE_CLICK)
 
 
-if __name__ == "__main__":
-    main()
+    def start(self):
+        raw = threading.Thread(target = __raw)
+        raw.daemon = True
+        raw.start()
+
+        cons = threading.Thread(target = __consolidated)
+        cons.daemon = True
+        con.start()
+
+
+    def get_next(self):
+        return self.__consolidated_queue.get()
+
+
