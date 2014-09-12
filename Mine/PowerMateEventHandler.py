@@ -16,7 +16,7 @@ class ConsolidatedEventCodes(Enum):
 
 DEV_DIR = '/dev/input/'
 delay = 100 # in milliseconds
-long_press_time = 500 # time (in ms) the button must be held to register a long press
+long_press_time = .5 # time (in s) the button must be held to register a long press
 time_down = 0 # time at which the button was last pressed down
 led_brightness = 100
 flash_duration = .2
@@ -123,6 +123,39 @@ class PowerMateEventHandler:
         return
 
 
+    def __button_press(self, time_pressed):
+        x = long_press_time
+        check_time = time_pressed
+
+        try:
+            event = self.__raw_queue.get(timeout=x)
+        except Queue.Empty:
+            event = None
+        x = x - ((self.get_time_in_ms() - check_time) / float(1000))
+
+        while ((event == None) or (event.code != button_pushed)) and (x > 0):
+            check_time = self.get_time_in_ms()
+            try:
+                event = self.__raw_queue.get(timeout=x)
+            except Queue.Empty:
+                event = None
+            x = x - ((self.get_time_in_ms() - check_time) / float(1000))
+
+        if x <= 0: # was long
+            self.__consolidated_queue.put(ConsolidatedEventCodes.LONG_CLICK)
+            # pull events until button is release (disallow turns while button is down)
+            event = self.__raw_queue.get()
+            while event.code != button_pushed:
+                event = self.__raw_queue.get()
+
+        else:
+            # TODO handle double
+            self.__consolidated_queue.put(ConsolidatedEventCodes.SINGLE_CLICK)
+        return
+
+
+
+
     def __consolidated(self):
 
         time_of_last_turn = 0
@@ -139,19 +172,8 @@ class PowerMateEventHandler:
 
             elif event.code == button_pushed:
                 if event.value == positive: # button pressed
-                    self.button_up = False
                     time_down = self.get_time_in_ms()
-                    t = threading.Thread(target = button_down, args = (time_down))
-                    t.daemon = True
-                    t.start()
-
-                else: # button released
-                    button_up = True
-                    if was_long: # long press
-                        self.__consolidated_queue.put(LONG_CLICK)
-                        was_long = False
-                    else:
-                        self.__consolidated_queue.put(SINGLE_CLICK)
+                    self.__button_press(time_down)
 
 
     def start(self):
