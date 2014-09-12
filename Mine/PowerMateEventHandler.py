@@ -15,6 +15,9 @@ class ConsolidatedEventCodes(Enum):
     LEFT_TURN = RIGHT_TURN + 1
 
 DEV_DIR = '/dev/input/'
+
+
+# TODO make these instance variables, and make accessors and mutators
 delay = 100 # in milliseconds
 long_press_time = .5 # time (in s) the button must be held to register a long press
 time_down = 0 # time at which the button was last pressed down
@@ -60,6 +63,8 @@ class PowerMateEventHandler:
         uinput.fd = self.__dev.fd
         self.uinput = uinput
 
+
+    # TODO make a turn on function
 
     def turn_off_led(self):
         '''
