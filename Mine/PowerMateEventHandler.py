@@ -34,7 +34,7 @@ class PowerMateEventHandler:
 
     def __find_device(self):
         '''
-        Finds and returns the device in /dev/input/event
+        Finds and returns the device in DEV_DIR
 
         RETURN dev = An evdev.InputDevice. None if the device
         is not found.
@@ -46,19 +46,19 @@ class PowerMateEventHandler:
                 if dev.name.find('Griffin PowerMate') >= 0:
                     return dev
 
+        raise Exception("DeviceNotFound")
+
 
     def __init__(self):
+        self.__dev = self.__find_device()
+
         self.__raw_queue = Queue.Queue()
         self.__consolidated_queue = Queue.Queue()
-        self.__dev = self.__find_device()
 
         uinput = UInput(events={ecodes.EV_MSC:[ecodes.MSC_PULSELED]})
         uinput.device = self.__dev
         uinput.fd = self.__dev.fd
         self.uinput = uinput
-
-        self.__button_up = True
-        self.__was_long = False
 
 
     def turn_off_led(self):
@@ -70,7 +70,7 @@ class PowerMateEventHandler:
 
 
 
-    def get_time_in_ms(self):
+    def __get_time_in_ms(self):
         return int(round(time.time() * 1000))
 
 
@@ -92,37 +92,6 @@ class PowerMateEventHandler:
                 self.__raw_queue.put(event)
 
 
-    def __button_down(self, time_pressed):
-        '''
-        This function is intended to be run on its own thread,
-        and is used to determine whether a button press was a normal/short
-        press, or a long press.
-
-        Once it registers a long press, it should flash the led on the device.
-
-        PARAM time_pressed = int representing when the button was pressed
-            Note that this is passed in rather than calculated here to
-            account for any overhead spinning off the new thread.
-
-        PARAM uinput = the PowerMat device
-
-        Side Effects:
-            LED is flashed
-            was_long is set to True
-       '''
-
-        last_checked_at = self.get_time_in_ms()
-
-        while not button_up:
-            if last_checked_at - time_pressed > long_press_time:
-                self.was_long = True
-                self.flash_led(uinput, 1, led_brightness, flash_duration)
-                return
-            time.sleep(.01)
-            last_checked_at = self.get_time_in_ms()
-        return
-
-
     def __button_press(self, time_pressed):
         x = long_press_time
         check_time = time_pressed
@@ -131,15 +100,15 @@ class PowerMateEventHandler:
             event = self.__raw_queue.get(timeout=x)
         except Queue.Empty:
             event = None
-        x = x - ((self.get_time_in_ms() - check_time) / float(1000))
+        x = x - ((self.__get_time_in_ms() - check_time) / float(1000))
 
         while ((event == None) or (event.code != button_pushed)) and (x > 0):
-            check_time = self.get_time_in_ms()
+            check_time = self.__get_time_in_ms()
             try:
                 event = self.__raw_queue.get(timeout=x)
             except Queue.Empty:
                 event = None
-            x = x - ((self.get_time_in_ms() - check_time) / float(1000))
+            x = x - ((self.__get_time_in_ms() - check_time) / float(1000))
 
         if x <= 0: # was long
             self.__consolidated_queue.put(ConsolidatedEventCodes.LONG_CLICK)
@@ -163,16 +132,16 @@ class PowerMateEventHandler:
         while True:
             event = self.__raw_queue.get()
 
-            if event.code == knob_turned and self.get_time_in_ms() - delay > time_of_last_turn:
+            if event.code == knob_turned and self.__get_time_in_ms() - delay > time_of_last_turn:
                 if event.value > 0:
                     self.__consolidated_queue.put(ConsolidatedEventCodes.RIGHT_TURN)
                 else:
                     self.__consolidated_queue.put(ConsolidatedEventCodes.LEFT_TURN)
-                time_of_last_turn = self.get_time_in_ms()
+                time_of_last_turn = self.__get_time_in_ms()
 
             elif event.code == button_pushed:
                 if event.value == positive: # button pressed
-                    time_down = self.get_time_in_ms()
+                    time_down = self.__get_time_in_ms()
                     self.__button_press(time_down)
 
 
@@ -188,5 +157,3 @@ class PowerMateEventHandler:
 
     def get_next(self):
         return self.__consolidated_queue.get()
-
-
