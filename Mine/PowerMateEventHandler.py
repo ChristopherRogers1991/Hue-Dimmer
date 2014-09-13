@@ -66,11 +66,26 @@ class PowerMateEventHandler:
     def __raw(self):
         while True:
 
+            if not self.__event_capture_running:
+                return
+
             # Wait until the device is ready for reading
             r,w,x = select([self.__dev], [], [])
+            
+            # TODO need to find a non-blocking way to determine when
+            # the device is ready to be read
+            # possible workaround is to just catch the error
+            # through when it's not ready, but that seems
+            # crappy. Blocking, however, prevents being able to
+            # end the thread and join it with main - which
+            # for some reason seems desireable - might actually
+            # be irrelevant. I guess I have a lot to ponder.
 
-            for event in self.__dev.read():
-                self.__raw_queue.put(event)
+            if not r == None:
+                event = self.__dev.read_one()
+                if not event == None:
+                    self.__raw_queue.put(event)
+            time.sleep(.01)
 
 
     def __consolidated(self):
@@ -78,12 +93,15 @@ class PowerMateEventHandler:
         time_of_last_turn = 0
 
         while True:
+            
+            if not self.__event_capture_running:
+                return
 
             # Allows the thread to be joinable (i.e. stoppable) without
             # waiting for another event (without the timeout, get would
             # block until the next event)
             try:
-                event = self.__raw_queue.get(timeout=.1)
+                event = self.__raw_queue.get(timeout=.01)
             except Queue.Empty:
                 continue
             
@@ -183,6 +201,8 @@ class PowerMateEventHandler:
 
 
     def start(self):
+        self.__event_capture_running = True
+
         raw = threading.Thread(target = self.__raw)
         raw.daemon = True
         raw.start()
@@ -191,21 +211,23 @@ class PowerMateEventHandler:
         cons.daemon = True
         cons.start()
 
-        self.__event_capture_running = True
         self.__raw_thread = raw
         self.__consolidated_thread = cons
 
 
     def stop(self):
         if self.__event_capture_running:
-            self._event_capture_running = False
+            self.__event_capture_running = False
             self.__consolidated_thread.join()
             print("c joined")
             self.__raw_thread.join()
             print("raw joined")
 
 
-    def get_next(self):
+    def get_next(self, block=True, timeout=None):
         if not self.__event_capture_running:
             raise Exception("CaptureNotStarted")
-        return self.__consolidated_queue.get()
+        try:
+            return self.__consolidated_queue.get(block, timeout)
+        except Queue.Empty:
+            return None
