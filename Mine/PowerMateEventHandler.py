@@ -43,10 +43,7 @@ class PowerMateEventHandler:
             self.__dev = dev
 
         self.__raw_queue = Queue.Queue()
-        self.__raw_thread = None
-
         self.__consolidated_queue = Queue.Queue()
-        self.__consolidated_thread = None
 
         uinput = UInput(events={ecodes.EV_MSC:[ecodes.MSC_PULSELED]})
         uinput.device = self.__dev
@@ -54,8 +51,6 @@ class PowerMateEventHandler:
         self.uinput = uinput
 
         self.set_led_brightness(brightness)
-        
-        self.__event_capture_running = False
 
 
 
@@ -65,11 +60,6 @@ class PowerMateEventHandler:
 
     def __raw(self):
         while True:
-
-            if not self.__event_capture_running:
-                return
-
-            # Wait until the device is ready for reading
             r,w,x = select([self.__dev], [], [])
 
             for event in self.__dev.read():
@@ -81,18 +71,7 @@ class PowerMateEventHandler:
         time_of_last_turn = 0
 
         while True:
-            
-            if not self.__event_capture_running:
-                return
-
-            # Allows the thread to be joinable (i.e. stoppable) without
-            # waiting for another event (without the timeout, get would
-            # block until the next event)
-            try:
-                event = self.__raw_queue.get(timeout=.1)
-            except Queue.Empty:
-                continue
-            
+            event = self.__raw_queue.get()
 
             if event.code == knob_turned and self.__get_time_in_ms() - delay > time_of_last_turn:
                 if event.value > 0:
@@ -197,21 +176,6 @@ class PowerMateEventHandler:
         cons.daemon = True
         cons.start()
 
-        self.__event_capture_running = True
-        self.__raw_thread = raw
-        self.__consolidated_thread = cons
 
-
-    def stop(self):
-        if self.__event_capture_running:
-            self._event_capture_running = False
-            self.__consolidated_thread.join()
-            print("c joined")
-            self.__raw_thread.join()
-            print("raw joined")
-
-
-    def get_next(self, block=True, timeout=None):
-        if not self.__event_capture_running:
-            raise Exception("CaptureNotStarted")
-        return self.__consolidated_queue.get(block, timeout)
+    def get_next(self):
+        return self.__consolidated_queue.get()
