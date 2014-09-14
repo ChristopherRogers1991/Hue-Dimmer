@@ -69,19 +69,9 @@ class PowerMateEventHandler:
             if not self.__event_capture_running:
                 return
 
-            # Wait until the device is ready for reading
-            r,w,x = select([self.__dev], [], [])
-            
-            # TODO need to find a non-blocking way to determine when
-            # the device is ready to be read
-            # possible workaround is to just catch the error
-            # through when it's not ready, but that seems
-            # crappy. Blocking, however, prevents being able to
-            # end the thread and join it with main - which
-            # for some reason seems desireable - might actually
-            # be irrelevant. I guess I have a lot to ponder.
-
-            if not r == None:
+            # Check if the device is readable
+            r,w,x = select([self.__dev], [], [], .01)
+            if r:
                 event = self.__dev.read_one()
                 if not event == None:
                     self.__raw_queue.put(event)
@@ -101,6 +91,7 @@ class PowerMateEventHandler:
             # waiting for another event (without the timeout, get would
             # block until the next event)
             try:
+                print("here")
                 event = self.__raw_queue.get(timeout=.01)
             except Queue.Empty:
                 continue
