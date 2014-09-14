@@ -1,41 +1,54 @@
 # requires python-evdev, python-requests
 from evdev import InputDevice, categorize, ecodes, DeviceInfo, UInput, InputEvent, events
-from select import select
+import select
 from enum import Enum
 import Queue
 import os
 import time
 import threading
 
+
+# Constants
+BUTTON_PUSHED = 256
+KNOB_TURNED = 7
+POSITIVE = 1 # button down, or knob clockwise
+NEGATIVE = -1 # button up, or knob counter-clockwise
+
+
+# TODO make these instance variables, and make accessors and mutators
+delay = 100 # time in milliseconds between consolidated turn events
+long_press_time = .5 # time (in s) the button must be held to register a long press
+time_down = 0 # time at which the button was last pressed down
+led_brightness = 100
+flash_duration = .2
+
+
 class ConsolidatedEventCodes(Enum):
+    '''
+    SINGLE_CLICK = 0
+    DOUBLE_CLICK = SINGLE_CLICK + 1
+    LONG_CLICK = DOUBLE_CLICK + 1
+    RIGHT_TURN = LONG_CLICK + 1
+    LEFT_TURN = RIGHT_TURN + 1
+    '''
     SINGLE_CLICK = 0
     DOUBLE_CLICK = SINGLE_CLICK + 1
     LONG_CLICK = DOUBLE_CLICK + 1
     RIGHT_TURN = LONG_CLICK + 1
     LEFT_TURN = RIGHT_TURN + 1
 
-DEV_DIR = '/dev/input/'
-
-
-# TODO make these instance variables, and make accessors and mutators
-delay = 100 # in milliseconds
-long_press_time = .5 # time (in s) the button must be held to register a long press
-time_down = 0 # time at which the button was last pressed down
-led_brightness = 100
-flash_duration = .2
-
-max_devices = 16 # max number of input devices
-
-button_pushed = 256
-knob_turned = 7
-positive = 1 # button down, or knob clockwise
-negative = -1 # button up, or knob counter-clockwise
-
 
 class PowerMateEventHandler:
 
-    def __init__(self, brightness=255):
-        dev = self.find_device()
+    def __init__(self, brightness=255, dev_dir='/dev/input/'):
+        '''
+        Find the PowerMateDevice, and get set up to
+        start reading from it.
+
+        PARAM brightness = the inital brightness of the led in the base
+        PARAM dev_dir = the directory in which to look for the device
+        '''
+        dev = self.find_device(dev_dir)
 
         if dev is None:
             raise Exception("DeviceNotFound")
@@ -60,17 +73,26 @@ class PowerMateEventHandler:
 
 
     def __get_time_in_ms(self):
+        '''
+        return the currnt time in ms
+        '''
+
         return int(round(time.time() * 1000))
 
 
     def __raw(self):
+        '''
+        Begin raw capture of events, and add them to
+        the raw queue.
+        '''
+
         while True:
 
             if not self.__event_capture_running:
                 return
 
             # Check if the device is readable
-            r,w,x = select([self.__dev], [], [], .01)
+            r,w,x = select.select([self.__dev], [], [], .01)
             if r:
                 event = self.__dev.read_one()
                 if not event == None:
@@ -79,6 +101,10 @@ class PowerMateEventHandler:
 
 
     def __consolidated(self):
+        '''
+        Begin consolidating events from the raw queue,
+        and placing them on the consolidated queue
+        '''
 
         time_of_last_turn = 0
 
@@ -97,20 +123,28 @@ class PowerMateEventHandler:
                 continue
             
 
-            if event.code == knob_turned and self.__get_time_in_ms() - delay > time_of_last_turn:
+            if event.code == KNOB_TURNED and self.__get_time_in_ms() - delay > time_of_last_turn:
                 if event.value > 0:
                     self.__consolidated_queue.put(ConsolidatedEventCodes.RIGHT_TURN)
                 else:
                     self.__consolidated_queue.put(ConsolidatedEventCodes.LEFT_TURN)
                 time_of_last_turn = self.__get_time_in_ms()
 
-            elif event.code == button_pushed:
-                if event.value == positive: # button pressed
-                    time_down = self.__get_time_in_ms()
-                    self.__button_press(time_down)
+            elif event.code == BUTTON_PUSHED:
+                if event.value == POSITIVE: # button pressed
+                    self.__button_press(self.__get_time_in_ms())
 
 
     def __button_press(self, time_pressed):
+        '''
+        Helper function for __consolidated.
+
+        Handle a button press event (i.e. consolidtate raw events into
+        a single, double, or long click event)
+
+        PARAM time_pressed = the time the button was first pressed.
+        '''
+
         x = long_press_time
         check_time = time_pressed
 
@@ -120,7 +154,7 @@ class PowerMateEventHandler:
             event = None
         x = x - ((self.__get_time_in_ms() - check_time) / float(1000))
 
-        while ((event == None) or (event.code != button_pushed)) and (x > 0):
+        while ((event == None) or (event.code != BUTTON_PUSHED)) and (x > 0):
             check_time = self.__get_time_in_ms()
             try:
                 event = self.__raw_queue.get(timeout=x)
@@ -132,7 +166,7 @@ class PowerMateEventHandler:
             self.__consolidated_queue.put(ConsolidatedEventCodes.LONG_CLICK)
             # pull events until button is release (disallow turns while button is down)
             event = self.__raw_queue.get()
-            while event.code != button_pushed:
+            while event.code != BUTTON_PUSHED:
                 event = self.__raw_queue.get()
 
         else:
@@ -142,7 +176,7 @@ class PowerMateEventHandler:
 
 
 
-    def find_device(self):
+    def find_device(self, dev_dir):
         '''
         Finds and returns the device in DEV_DIR
 
@@ -150,9 +184,9 @@ class PowerMateEventHandler:
         is not found.
         '''
         dev = None
-        for dev in os.listdir(DEV_DIR):
+        for dev in os.listdir(dev_dir):
             if dev.find("event") == 0:
-                dev = InputDevice(DEV_DIR + dev)
+                dev = InputDevice(dev_dir + dev)
                 if dev.name.find('Griffin PowerMate') >= 0:
                     break
         return dev
@@ -165,6 +199,7 @@ class PowerMateEventHandler:
         less than 0 will be treated as zero, anything greater
         than 255 will be treated as 255.
         '''
+
         if brightness < 0:
             brightness = 0
         elif brightness > 255:
@@ -175,23 +210,32 @@ class PowerMateEventHandler:
         self.__led_brightness = brightness
         
 
-    def flash_led(self, num_flashes, brightness=led_brightness, duration=flash_duration):
+    def flash_led(self, num_flashes=2, brightness=led_brightness, duration=flash_duration, sleep=.2):
         '''
         Convenience function to flash the led in the base.
         PARAM num_flashes = number times to flash
         PARAM brightness = the brightness of the flashes (range defined by set_led_brightness)
         '''
+
+        reset = self.__led_brightness
+
         for i in range(num_flashes):
-            self.uinput.write(ecodes.EV_MSC, ecodes.MSC_PULSELED, brightness)
-            self.uinput.syn()
+            self.set_led_brightness(brightness)
             time.sleep(duration)
-            self.uinput.write(ecodes.EV_MSC, ecodes.MSC_PULSELED, 0)
-            self.uinput.syn()
-            time.sleep(.2)
+            self.set_led_brightness(0)
+            time.sleep(sleep)
+
+        self.__led_brightness = reset
 
 
 
     def start(self):
+        '''
+        Begin capturing/queueing events. Once this has been run,
+        get_next() can be used to start pulling events off the
+        queue.
+        '''
+
         self.__event_capture_running = True
 
         raw = threading.Thread(target = self.__raw)
@@ -207,6 +251,10 @@ class PowerMateEventHandler:
 
 
     def stop(self):
+        '''
+        Stop the capture/queuing of events.
+        '''
+
         if self.__event_capture_running:
             self.__event_capture_running = False
             self.__consolidated_thread.join()
@@ -216,6 +264,22 @@ class PowerMateEventHandler:
 
 
     def get_next(self, block=True, timeout=None):
+        '''
+        Pull the next consolidated event off the queue, and return it.
+
+        PARAM block
+        PARAM timeout
+
+        block and timeout are passed directly to queue.get().
+        If block is TRUE, the thread will block for timeout seconds for
+        the next event. If timeout is None, it will wait indefinitely.
+        If block is False, an event will be grabbed only if one is ready
+        immediately.
+
+        RETURN a ConsolidatedEventCode; None if there is not an event ready
+        and block is False, or timeout is reached.
+        '''
+
         if not self.__event_capture_running:
             raise Exception("CaptureNotStarted")
         try:
