@@ -16,7 +16,6 @@ NEGATIVE = -1 # button up, or knob counter-clockwise
 
 
 # TODO make these instance variables, and make accessors and mutators
-delay = 100 # time in milliseconds between consolidated turn events
 long_press_time = .5 # time (in s) the button must be held to register a long press
 time_down = 0 # time at which the button was last pressed down
 led_brightness = 100
@@ -40,12 +39,13 @@ class ConsolidatedEventCodes(Enum):
 
 class PowerMateEventHandler:
 
-    def __init__(self, brightness=255, dev_dir='/dev/input/'):
+    def __init__(self, brightness=255, read_delay=None, turn_delay=0, dev_dir='/dev/input/'):
         '''
         Find the PowerMateDevice, and get set up to
         start reading from it.
 
         PARAM brightness = the inital brightness of the led in the base
+        PARAM delay = time in ms between consolidated turns
         PARAM dev_dir = the directory in which to look for the device
         '''
         dev = self.find_device(dev_dir)
@@ -69,7 +69,8 @@ class PowerMateEventHandler:
         self.set_led_brightness(brightness)
         
         self.__event_capture_running = False
-
+        self.__turn_delay = turn_delay
+        self.__read_delay = read_delay
 
 
     def __get_time_in_ms(self):
@@ -84,6 +85,7 @@ class PowerMateEventHandler:
         '''
         Begin raw capture of events, and add them to
         the raw queue.
+
         '''
 
         while True:
@@ -92,18 +94,28 @@ class PowerMateEventHandler:
                 return
 
             # Check if the device is readable
-            r,w,x = select.select([self.__dev], [], [], .01)
+            r,w,x = select.select([self.__dev], [], [], self.__read_delay)
             if r:
                 event = self.__dev.read_one()
                 if not event == None:
                     self.__raw_queue.put(event)
-            time.sleep(.01)
+            #time.sleep(delay)
 
 
     def __consolidated(self):
         '''
         Begin consolidating events from the raw queue,
         and placing them on the consolidated queue
+
+        PARAM delay = Time seconds to wait for events to be on the raw queue.
+            This was intendted to allow the reading of events to be stoppable (i.e
+            to keep from blocking the thread indefinitely). It was made tunable to
+            allow good performance on fast CPUs, but not hog resources on slower
+            machines.
+
+            Setting delay to None will cause the thread to block indefinitely. This
+            will probably yield the best performance, but means the thread will not
+            stop after a call to stop() until a new event is triggered.
         '''
 
         time_of_last_turn = 0
@@ -117,13 +129,12 @@ class PowerMateEventHandler:
             # waiting for another event (without the timeout, get would
             # block until the next event)
             try:
-                print("here")
-                event = self.__raw_queue.get(timeout=.01)
+                event = self.__raw_queue.get(timeout=self.__read_delay)
             except Queue.Empty:
                 continue
             
 
-            if event.code == KNOB_TURNED and self.__get_time_in_ms() - delay > time_of_last_turn:
+            if event.code == KNOB_TURNED and self.__get_time_in_ms() - self.__turn_delay > time_of_last_turn:
                 if event.value > 0:
                     self.__consolidated_queue.put(ConsolidatedEventCodes.RIGHT_TURN)
                 else:
@@ -212,9 +223,13 @@ class PowerMateEventHandler:
 
     def flash_led(self, num_flashes=2, brightness=led_brightness, duration=flash_duration, sleep=.2):
         '''
-        Convenience function to flash the led in the base.
+        Convenience function to flash the led in the base. After the flashes, the brightness
+        will be reset to whatever it was when this function was called.
+
         PARAM num_flashes = number times to flash
         PARAM brightness = the brightness of the flashes (range defined by set_led_brightness)
+        PARAM flash_duration = length of each flash in seconds (decimals accepted)
+        PARAM sleep = time between each flash in seconds (decimals accepted)
         '''
 
         reset = self.__led_brightness
@@ -286,3 +301,36 @@ class PowerMateEventHandler:
             return self.__consolidated_queue.get(block, timeout)
         except Queue.Empty:
             return None
+
+
+    def set_turn_delay(delay):
+        '''
+        Set the delay between when consolidated events will be registered.
+
+        In an effort to reduce spam from a failry sensative device, this variable
+        was created. If multiple turn events come in, the first will register
+        a consolidated event, and those that come in within the delay time will
+        be ignored. Once the delay threshold has been reached, another consolidated
+        event will be registered.
+
+        PARAM delay = time in ms between turn events.
+        '''
+
+        self.__turn_delay = delay
+
+
+    def set_read_delay(delay):
+        '''
+        This was intendted to allow the reading of events to be stoppable (i.e
+        to keep from blocking the thread indefinitely). It was made tunable to
+        allow good performance on fast CPUs, but not hog resources on slower
+        machines.
+
+        Setting delay to None will cause the thread to block indefinitely. This
+        will probably yield the best performance, but means the thread will not
+        stop after a call to stop() until a new event is triggered.
+
+        PARAM delay = Time in seconds to wait for the device to be readable. 
+        '''
+
+        self.__read_delay(delay)
