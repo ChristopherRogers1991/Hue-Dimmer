@@ -48,7 +48,7 @@ class PowerMateEventHandler:
         PARAM delay = time in ms between consolidated turns
         PARAM dev_dir = the directory in which to look for the device
         '''
-        dev = self.find_device(dev_dir)
+        dev = find_device(dev_dir)
 
         if dev is None:
             raise Exception("DeviceNotFound")
@@ -189,21 +189,7 @@ class PowerMateEventHandler:
 
 
 
-    def find_device(self, dev_dir):
-        '''
-        Finds and returns the device in DEV_DIR
-
-        RETURN dev = An evdev.InputDevice. None if the device
-        is not found.
-        '''
-        dev = None
-        for dev in os.listdir(dev_dir):
-            if dev.find("event") == 0:
-                dev = InputDevice(dev_dir + dev)
-                if dev.name.find('Griffin PowerMate') >= 0:
-                    break
-        return dev
-
+    
 
     def set_led_brightness(self, brightness):
         '''
@@ -348,3 +334,20 @@ class PowerMateEventHandler:
         '''
 
         self.__read_delay(delay)
+
+
+def find_device(dev_dir):
+    '''
+    Finds and returns the device in DEV_DIR
+
+    RETURN dev = An evdev.InputDevice. None if the device
+    is not found.
+    '''
+    dev = None
+    for dev in os.listdir(dev_dir):
+        if dev.find("event") == 0:
+            dev = InputDevice(dev_dir + dev)
+            if dev.name.find('Griffin PowerMate') >= 0:
+                break
+    return dev
+
