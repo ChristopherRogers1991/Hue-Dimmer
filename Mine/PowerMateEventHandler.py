@@ -22,7 +22,7 @@ led_brightness = 100
 flash_duration = .2
 
 
-class ConsolidatedEventCodes(Enum):
+class ConsolidatedEventCode(Enum):
     '''
     SINGLE_CLICK = 0
     DOUBLE_CLICK = SINGLE_CLICK + 1
@@ -136,9 +136,9 @@ class PowerMateEventHandler:
 
             if event.code == KNOB_TURNED and self.__get_time_in_ms() - self.__turn_delay > time_of_last_turn:
                 if event.value > 0:
-                    self.__consolidated_queue.put(ConsolidatedEventCodes.RIGHT_TURN)
+                    self.__consolidated_queue.put(ConsolidatedEventCode.RIGHT_TURN)
                 else:
-                    self.__consolidated_queue.put(ConsolidatedEventCodes.LEFT_TURN)
+                    self.__consolidated_queue.put(ConsolidatedEventCode.LEFT_TURN)
                 time_of_last_turn = self.__get_time_in_ms()
 
             elif event.code == BUTTON_PUSHED:
@@ -154,6 +154,8 @@ class PowerMateEventHandler:
         a single, double, or long click event)
 
         PARAM time_pressed = the time the button was first pressed.
+        TODO = remove thie parameter, and uses of get_time_in_ms that are
+        unnecessary. The time can be gotten directly from the event.
         '''
 
         x = long_press_time
@@ -174,7 +176,7 @@ class PowerMateEventHandler:
             x = x - ((self.__get_time_in_ms() - check_time) / float(1000))
 
         if x <= 0: # was long
-            self.__consolidated_queue.put(ConsolidatedEventCodes.LONG_CLICK)
+            self.__consolidated_queue.put(ConsolidatedEventCode.LONG_CLICK)
             # pull events until button is release (disallow turns while button is down)
             event = self.__raw_queue.get()
             while event.code != BUTTON_PUSHED:
@@ -182,7 +184,7 @@ class PowerMateEventHandler:
 
         else:
             # TODO handle double
-            self.__consolidated_queue.put(ConsolidatedEventCodes.SINGLE_CLICK)
+            self.__consolidated_queue.put(ConsolidatedEventCode.SINGLE_CLICK)
         return
 
 
@@ -244,7 +246,7 @@ class PowerMateEventHandler:
 
 
 
-    def start(self):
+    def start(self, raw_only=False):
         '''
         Begin capturing/queueing events. Once this has been run,
         get_next() can be used to start pulling events off the
@@ -257,9 +259,11 @@ class PowerMateEventHandler:
         raw.daemon = True
         raw.start()
 
-        cons = threading.Thread(target = self.__consolidated)
-        cons.daemon = True
-        cons.start()
+        cons = None
+        if not raw_only:
+            cons = threading.Thread(target = self.__consolidated)
+            cons.daemon = True
+            cons.start()
 
         self.__raw_thread = raw
         self.__consolidated_thread = cons
@@ -272,10 +276,11 @@ class PowerMateEventHandler:
 
         if self.__event_capture_running:
             self.__event_capture_running = False
-            self.__consolidated_thread.join()
-            print("c joined")
+            if self.__consolidated_thread != None:
+                self.__consolidated_thread.join()
+            #print("c joined")
             self.__raw_thread.join()
-            print("raw joined")
+            #print("raw joined")
 
 
     def get_next(self, block=True, timeout=None):
@@ -291,16 +296,25 @@ class PowerMateEventHandler:
         If block is False, an event will be grabbed only if one is ready
         immediately.
 
-        RETURN a ConsolidatedEventCode; None if there is not an event ready
-        and block is False, or timeout is reached.
+        RETURN:
+            If start was run with rawOnly=True, an evdev.events.InputEvent;
+            Otherwise, a ConsolidatedEventCode.
+            In either case, None if there is not an event ready and block
+            is False, or timeout is reached.
         '''
 
+        event = None
         if not self.__event_capture_running:
             raise Exception("CaptureNotStarted")
         try:
-            return self.__consolidated_queue.get(block, timeout)
+            if self.__consolidated_thread != None:
+                event = self.__consolidated_queue.get(block, timeout)
+            else:
+                event = self.__raw_queue.get(block, timeout)
         except Queue.Empty:
-            return None
+            pass
+
+        return event
 
 
     def set_turn_delay(delay):
