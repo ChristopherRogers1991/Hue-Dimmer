@@ -336,13 +336,18 @@ class PowerMateEventHandler:
         self.__read_delay(delay)
 
 
-def find_device(dev_dir):
+def find_device(dev_dir='/dev/input/'):
     '''
-    Finds and returns the device in DEV_DIR
+    Finds and returns the device in dev_dir
+
+    If the user does not have permission to access the device, an OSError
+    Exception will be raised.
 
     RETURN dev = An evdev.InputDevice. None if the device
     is not found.
     '''
+    if dev_dir[-1] != '/':
+        dev_dir = dev_dir + '/'
     dev = None
     for dev in os.listdir(dev_dir):
         if dev.find("event") == 0:
