@@ -19,7 +19,7 @@ NEGATIVE = -1 # button up, or knob counter-clockwise
 long_press_time = .5 # time (in s) the button must be held to register a long press
 time_down = 0 # time at which the button was last pressed down
 led_brightness = 100
-flash_duration = .2
+flash_duration = .15
 
 
 class ConsolidatedEventCode(Enum):
@@ -44,9 +44,13 @@ class PowerMateEventHandler:
         Find the PowerMateDevice, and get set up to
         start reading from it.
 
-        PARAM brightness = the inital brightness of the led in the base
-        PARAM delay = time in ms between consolidated turns
-        PARAM dev_dir = the directory in which to look for the device
+        PARAM brightness = The inital brightness of the led in the base.
+        PARAM read_delay = Timeout when waiting for the device to be readable.
+            Having a time out allows the threads to be joinable without waiting
+            for another event. None (default) means to wait indefinitely for the device
+            to be readable.
+        PARAM turn_delay = Time in ms between consolidated turns.
+        PARAM dev_dir = The directory in which to look for the device.
         '''
         dev = find_device(dev_dir)
 
@@ -209,7 +213,7 @@ class PowerMateEventHandler:
         self.__led_brightness = brightness
         
 
-    def flash_led(self, num_flashes=2, brightness=led_brightness, duration=flash_duration, sleep=.2):
+    def flash_led(self, num_flashes=2, brightness=led_brightness, duration=flash_duration, sleep=.15):
         '''
         Convenience function to flash the led in the base. After the flashes, the brightness
         will be reset to whatever it was when this function was called.

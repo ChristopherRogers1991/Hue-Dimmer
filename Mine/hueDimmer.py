@@ -5,7 +5,7 @@
 #from select import select
 #import threading
 import os, requests, json, time
-from PowerMateEventHandler import PowerMateEventHandler, ConsolidatedEventCodes
+from PowerMateEventHandler import PowerMateEventHandler, ConsolidatedEventCode
 
 max_brightness = 255
 min_brightness = 0
@@ -44,7 +44,7 @@ def handle_turn(event):
     successful = False
 
     direction = -1
-    if event == ConsolidatedEventCodes.RIGHT_TURN:
+    if event == ConsolidatedEventCode.RIGHT_TURN:
         direction = 1
 
     if g.status_code == success:
@@ -103,25 +103,21 @@ def toggle_all():
 
 
 def main():
-    eh = PowerMateEventMandler.PowerMateEventHandler(0)
+    eh = PowerMateEventHandler(brightness=0, turn_delay=100)
     eh.start()
 
     while True:
         try:
             event = eh.get_next(timeout=.01)
-            if event == ConsolidatedEventCodes.RIGHT_TURN or event == ConsolidatedEventCodes.LEFT_TURN:
+            if event == ConsolidatedEventCode.RIGHT_TURN or event == ConsolidatedEventCode.LEFT_TURN:
                 handle_turn(event)
-            elif event = ConsolidatedEventCodes.SINGLE_CLICK:
+            elif event == ConsolidatedEventCode.SINGLE_CLICK:
                 toggle_all()
-            elif event == ConsolidatedEventCodes.LONG_CLICK:
+            elif event == ConsolidatedEventCode.LONG_CLICK:
                 eh.flash_led(num_flashes=2)
                 advance_mode()
         except KeyboardInterrupt:
             exit(0)
-
-
-
-                        toggle_all()
 
 
 if __name__ == "__main__":
