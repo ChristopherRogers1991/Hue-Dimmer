@@ -17,6 +17,7 @@ NEGATIVE = -1 # button up, or knob counter-clockwise
 
 # TODO make these instance variables, and make accessors and mutators
 long_press_time = .5 # time (in s) the button must be held to register a long press
+double_click_time = .5 # time (in s) the button must be pressed again after a single press to register as a double
 time_down = 0 # time at which the button was last pressed down
 led_brightness = 100
 flash_duration = .15
@@ -188,7 +189,31 @@ class PowerMateEventHandler:
 
         else:
             # TODO handle double
-            self.__consolidated_queue.put(ConsolidatedEventCode.SINGLE_CLICK)
+            try:
+                self.__raw_queue.get() # drop the null event
+                event = self.__raw_queue.get(timeout=double_click_time)
+            except Queue.Empty:
+                event = None
+
+            if event == None: # Single click
+                self.__consolidated_queue.put(ConsolidatedEventCode.SINGLE_CLICK)
+
+            elif event.code == BUTTON_PUSHED: # Double click
+                self.__consolidated_queue.put(ConsolidatedEventCode.DOUBLE_CLICK)
+
+            else: # turn
+                # This is just being dropped for now; as it generally shouldn't matter,
+                # and handling the event could cause problems.
+                # No peek funciton exists, so the event must be pulled off the queue.
+                # It can be put back, but would go on the end of the queue, meaning
+                # it could be put behind things with older timestamps. In the current
+                # Implementation, this probably wouldn't matter much, but if uses of
+                # get_time_in_ms are replaced with the actual time stamps, order of
+                # events might matter.
+                #
+                # self.__raw_queue.put(event)
+                pass
+
         return
 
 
@@ -360,3 +385,16 @@ def find_device(dev_dir='/dev/input/'):
                 break
     return dev
 
+
+def event_time_in_ms(event):
+    '''
+    PARAM InputEvent event
+
+    RETURN The time in ms the event occurred (as an int)
+
+    Does this by converting the event microseconds (event.usec) to
+    seconds (multiply by 1000000), adding the event seconds (event.sec),
+    converting to ms (multiply by 1000), then casting to an int.
+    '''
+
+    return int((event.usec / 1000000.0 + event.sec) * 1000) 
