@@ -16,8 +16,6 @@ NEGATIVE = -1 # button up, or knob counter-clockwise
 
 
 # TODO make these instance variables, and make accessors and mutators
-long_press_time = .5 # time (in s) the button must be held to register a long press
-double_click_time = .5 # time (in s) the button must be pressed again after a single press to register as a double
 time_down = 0 # time at which the button was last pressed down
 led_brightness = 100
 flash_duration = .15
@@ -40,7 +38,7 @@ class ConsolidatedEventCode(Enum):
 
 class PowerMateEventHandler:
 
-    def __init__(self, brightness=255, read_delay=None, turn_delay=0, dev_dir='/dev/input/'):
+    def __init__(self, brightness=255, read_delay=None, turn_delay=0, long_press_time=.5, double_click_time=.3, dev_dir='/dev/input/'):
         '''
         Find the PowerMateDevice, and get set up to
         start reading from it.
@@ -51,8 +49,11 @@ class PowerMateEventHandler:
             for another event. None (default) means to wait indefinitely for the device
             to be readable.
         PARAM turn_delay = Time in ms between consolidated turns.
+        PARAM long_press_time = time (in s) the button must be held to register a long press
+        PARAM double_click_time = time (in s) the button must be pressed again after a single press to register as a double
         PARAM dev_dir = The directory in which to look for the device.
         '''
+
         dev = find_device(dev_dir)
 
         if dev is None:
@@ -76,6 +77,9 @@ class PowerMateEventHandler:
         self.__event_capture_running = False
         self.__turn_delay = turn_delay
         self.__read_delay = read_delay
+
+        self.__long_press_time = long_press_time
+        self.__double_click_time = double_click_time
 
 
     def __get_time_in_ms(self):
@@ -163,7 +167,7 @@ class PowerMateEventHandler:
         unnecessary. The time can be gotten directly from the event.
         '''
 
-        x = long_press_time
+        x = self.__long_press_time
         check_time = time_pressed
 
         try:
@@ -191,7 +195,7 @@ class PowerMateEventHandler:
             # TODO handle double
             try:
                 self.__raw_queue.get() # drop the null event
-                event = self.__raw_queue.get(timeout=double_click_time)
+                event = self.__raw_queue.get(timeout=self.__double_click_time)
             except Queue.Empty:
                 event = None
 
@@ -215,9 +219,6 @@ class PowerMateEventHandler:
                 pass
 
         return
-
-
-
     
 
     def set_led_brightness(self, brightness):
@@ -363,6 +364,20 @@ class PowerMateEventHandler:
         '''
 
         self.__read_delay(delay)
+
+
+    def set_double_click_time(self, time):
+        '''
+        PARAM time (in s) the button must be pressed again after a single press to register as a double
+        '''
+        self.__double_click_time = time
+
+
+    def set_long_click_time(self, time):
+        '''
+        PARAM time (in s) the button must be held to register a long press
+        '''
+        self.__long_click_time = time
 
 
 def find_device(dev_dir='/dev/input/'):
