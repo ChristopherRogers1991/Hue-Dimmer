@@ -4,7 +4,7 @@
 #from evdev import InputDevice, categorize, ecodes, DeviceInfo, UInput, InputEvent, events
 #from select import select
 #import threading
-import os, requests, json, time
+import requests, json, time
 from PowerMateEventHandler import PowerMateEventHandler, ConsolidatedEventCode
 
 max_brightness = 255

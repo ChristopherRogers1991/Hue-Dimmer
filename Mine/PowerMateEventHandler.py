@@ -1,5 +1,5 @@
 # requires python-evdev, python-requests
-from evdev import InputDevice, categorize, ecodes, DeviceInfo, UInput, InputEvent, events
+from evdev import InputDevice, ecodes, UInput
 import select
 from enum import Enum
 import Queue
@@ -307,7 +307,7 @@ class PowerMateEventHandler:
         return event
 
 
-    def set_turn_delay(delay):
+    def set_turn_delay(self, delay):
         '''
         Set the delay between when consolidated events will be registered.
 
@@ -323,7 +323,7 @@ class PowerMateEventHandler:
         self.__turn_delay = delay
 
 
-    def set_read_delay(delay):
+    def set_read_delay(self, delay):
         '''
         This was intendted to allow the reading of events to be stoppable (i.e
         to keep from blocking the thread indefinitely). It was made tunable to
