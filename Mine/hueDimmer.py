@@ -102,6 +102,11 @@ def toggle_all():
             p = requests.put(url + "action", data=json.dumps({"on":False, "transitiontime":2}))
 
 
+def activate_scene():
+    p = requests.put("http://192.168.1.6/api/newdeveloper/groups/3/action", data=json.dumps({"on":False}))
+    p = requests.put("http://192.168.1.6/api/newdeveloper/groups/2/action", data=json.dumps({"on":True,"bri":0,"ct":500}))
+
+
 def main():
     eh = PowerMateEventHandler(brightness=0, turn_delay=100)
     eh.start()
@@ -116,6 +121,8 @@ def main():
             elif event == ConsolidatedEventCode.LONG_CLICK:
                 eh.flash_led(num_flashes=2)
                 advance_mode()
+            elif event == ConsolidatedEventCode.DOUBLE_CLICK:
+                activate_scene()
         except KeyboardInterrupt:
             exit(0)
 
