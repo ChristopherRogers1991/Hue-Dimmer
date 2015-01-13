@@ -102,13 +102,19 @@ class PowerMateEventHandler:
             if not self.__event_capture_running:
                 return
 
-            # Check if the device is readable
-            r,w,x = select.select([self.__dev], [], [], self.__read_delay)
-            if r:
-                event = self.__dev.read_one()
-                if not event == None:
-                    self.__raw_queue.put(event)
-            #time.sleep(delay)
+            try:
+                # Check if the device is readable
+                r,w,x = select.select([self.__dev], [], [], self.__read_delay)
+                if r:
+                    event = self.__dev.read_one()
+                    if not event == None:
+                        self.__raw_queue.put(event)
+                #time.sleep(delay)
+            except IOError:
+                self.__dev = find_device()
+                while self.__dev == None:
+                    time.sleep(.5)
+                    self.__dev = find_device()
 
 
     def __consolidated(self):
