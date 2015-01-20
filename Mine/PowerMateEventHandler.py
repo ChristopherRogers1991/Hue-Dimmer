@@ -111,9 +111,8 @@ class PowerMateEventHandler:
                     event = self.__dev.read_one()
                     if not event == None:
                         self.__raw_queue.put(event)
-                #time.sleep(delay)
             except IOError:
-                import pdb; pdb.set_trace()
+                # If the device get's disconnected, wait for it to come back
                 while True:
                     time.sleep(.5)
                     self.__dev = find_device()
@@ -373,7 +372,7 @@ class PowerMateEventHandler:
         PARAM delay = Time in seconds to wait for the device to be readable. 
         '''
 
-        self.__read_delay(delay)
+        self.__read_delay = delay
 
 
     def set_double_click_time(self, time):
