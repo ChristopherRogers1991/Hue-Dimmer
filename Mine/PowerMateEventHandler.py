@@ -1,4 +1,5 @@
 # requires python-evdev, python-requests
+from __future__ import print_function
 from evdev import InputDevice, ecodes, UInput
 import select
 from enum import Enum
@@ -6,6 +7,7 @@ import Queue
 import os
 import time
 import threading
+import sys
 
 
 # Constants
@@ -67,7 +69,7 @@ class PowerMateEventHandler:
         self.__consolidated_queue = Queue.Queue()
         self.__consolidated_thread = None
 
-        uinput = UInput(events={ecodes.EV_MSC:[ecodes.MSC_PULSELED]})
+        uinput = UInput(name="GriffinPowerMateWriter", events={ecodes.EV_MSC:[ecodes.MSC_PULSELED]})
         uinput.device = self.__dev
         uinput.fd = self.__dev.fd
         self.uinput = uinput
@@ -111,10 +113,12 @@ class PowerMateEventHandler:
                         self.__raw_queue.put(event)
                 #time.sleep(delay)
             except IOError:
-                self.__dev = find_device()
-                while self.__dev == None:
+                import pdb; pdb.set_trace()
+                while True:
                     time.sleep(.5)
                     self.__dev = find_device()
+                    if self.__dev != None:
+                        break
 
 
     def __consolidated(self):
@@ -396,15 +400,23 @@ def find_device(dev_dir='/dev/input/'):
     RETURN dev = An evdev.InputDevice. None if the device
     is not found.
     '''
-    if dev_dir[-1] != '/':
-        dev_dir = dev_dir + '/'
-    dev = None
-    for dev in os.listdir(dev_dir):
-        if dev.find("event") == 0:
-            dev = InputDevice(dev_dir + dev)
-            if dev.name.find('Griffin PowerMate') >= 0:
-                break
-    return dev
+    if os.path.exists("/dev/GriffinPowermate"):
+        device = InputDevice("/dev/GriffinPowermate")
+
+    else:
+        if dev_dir[-2] != '/':
+            dev_dir = dev_dir + '/'
+        device = None
+        for dev in os.listdir(dev_dir):
+            if dev.find("event") == 0:
+                try:
+                    dev = InputDevice(dev_dir + dev)
+                    if dev.name.find('Griffin PowerMate') >= 0:
+                        device = dev
+                        break
+                except OSError:
+                       print(str(OSError), file=sys.stderr) 
+    return device
 
 
 def event_time_in_ms(event):
