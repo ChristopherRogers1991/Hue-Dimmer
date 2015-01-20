@@ -397,6 +397,12 @@ def find_device(dev_dir='/dev/input/'):
     If the user does not have permission to access the device, an OSError
     Exception will be raised.
 
+    OSErrors are printed to stderr. These will likely happen if the user
+    does not have permission to all devices. If the function retrns null
+    with the device plugged in, check the permissions on the device.
+    (There's probably a better way to do this - check the devices before
+    attempting to open them - but that will have to wait for the moment.)
+
     RETURN dev = An evdev.InputDevice. None if the device
     is not found.
     '''
