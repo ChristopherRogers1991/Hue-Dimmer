@@ -1,0 +1,7 @@
+udev rules are required to use as non root. The the powermate and uinput must be
+set such that groups have read and write access (possible just read for the
+powermate, and just write for uinput). These should be created with a script
+which checks if there is already a group with access to those devices, and
+adds the user to said group. Otherwise, it should create a group, and add the
+user, and create the necessary udev rules.
+
