@@ -43,7 +43,10 @@ class PowerMateEventHandler:
     def __init__(self, brightness=255, read_delay=None, turn_delay=0, long_press_time=.5, double_click_time=.3, dev_dir='/dev/input/'):
         '''
         Find the PowerMateDevice, and get set up to
-        start reading from it.
+        start reading from it and writing to it.
+
+        If the device is not found (can happen if the device is not plugged in, or the user does not have permissions to it) a
+        DeviceNotFound Exception will be raised.
 
         PARAM brightness = The inital brightness of the led in the base.
         PARAM read_delay = Timeout when waiting for the device to be readable.
@@ -69,10 +72,7 @@ class PowerMateEventHandler:
         self.__consolidated_queue = Queue.Queue()
         self.__consolidated_thread = None
 
-        uinput = UInput(name="GriffinPowerMateWriter", events={ecodes.EV_MSC:[ecodes.MSC_PULSELED]})
-        uinput.device = self.__dev
-        uinput.fd = self.__dev.fd
-        self.uinput = uinput
+        self.__uinput = get_uinput(dev)
 
         self.set_led_brightness(brightness)
         
@@ -117,6 +117,8 @@ class PowerMateEventHandler:
                     time.sleep(.5)
                     self.__dev = find_device()
                     if self.__dev != None:
+                        self.__uinput = get_uinput(self.__dev)
+                        self.set_led_brightness(self.__led_brightness)
                         break
 
 
@@ -243,8 +245,10 @@ class PowerMateEventHandler:
         elif brightness > 255:
             brightness = 255
 
-        self.uinput.write(ecodes.EV_MSC, ecodes.MSC_PULSELED, brightness)
-        self.uinput.syn()
+        #r,w,x = select.select([], [self.__dev], [])
+        #if w:
+        self.__uinput.write(ecodes.EV_MSC, ecodes.MSC_PULSELED, brightness)
+        self.__uinput.syn()
         self.__led_brightness = brightness
         
 
@@ -393,11 +397,11 @@ def find_device(dev_dir='/dev/input/'):
     '''
     Finds and returns the device in dev_dir
 
-    If the user does not have permission to access the device, an OSError
+    If the user does not have permission to access a device in dev_dir, an OSError
     Exception will be raised.
 
     OSErrors are printed to stderr. These will likely happen if the user
-    does not have permission to all devices. If the function retrns null
+    does not have permission to all devices. If the function retrns None
     with the device plugged in, check the permissions on the device.
     (There's probably a better way to do this - check the devices before
     attempting to open them - but that will have to wait for the moment.)
@@ -420,7 +424,7 @@ def find_device(dev_dir='/dev/input/'):
                         device = dev
                         break
                 except OSError:
-                       print(str(OSError), file=sys.stderr) 
+                    print(str(OSError) + " You do not have permissions to use this device: " + dev_dir + dev + ".", file=sys.stderr) 
     return device
 
 
@@ -436,3 +440,16 @@ def event_time_in_ms(event):
     '''
 
     return int((event.usec / 1000000.0 + event.sec) * 1000) 
+
+
+def get_uinput(dev):
+    '''
+    PARAM dev - An evdev.InputDevice for the PowerMate (see find_device)
+
+    RETURN - An evdev.UInput for the device. This can be used to write to the
+             device (to change the led brightness).
+    '''
+    uinput = UInput(name="GriffinPowerMateWriter", events={ecodes.EV_MSC:[ecodes.MSC_PULSELED]})
+    uinput.device = dev
+    uinput.fd = dev.fd
+    return uinput
